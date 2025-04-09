@@ -2,8 +2,8 @@ import streamlit as st
 import requests
 from datetime import datetime
 
-API_TOKEN = "fLQAXbJ9tvhNOvJj2tLNXnROuCtXb3iEiJ9LQ9ec"
-BASE_URL = "https://api.marketaux.com/v1/news/all"
+API_TOKEN = st.secrets["API_TOKEN"]
+BASE_URL = st.secrets["BASE_URL"]
 
 st.set_page_config(page_title="Stock News Sentiment", layout="centered")
 
