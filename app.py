@@ -27,11 +27,10 @@ def get_news(ticker):
 # Convert score to sentiment
 def interpret_sentiment(score):
     if score > 0.15:
-            emoji = "😊 Positive"
+        return "🟢 Positive"
     elif score < -0.15:
-            emoji = "😠 Negative"
-    else:
-            emoji = "😐 Neutral"
+        return "🔴 Negative"
+    return "🟡 Neutral"
 
 # Load and display news
 if ticker:
