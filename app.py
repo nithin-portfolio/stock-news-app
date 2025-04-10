@@ -2,17 +2,18 @@ import streamlit as st
 import requests
 
 # Title
-st.title("📈 Senticker – Stock News with Sentiment")
+st.title("📈 Senticker – Curated Stock News with Sentiment")
 
-# User input
-ticker = st.text_input("Enter a stock ticker (e.g. TSLA, AAPL):", "TSLA")
-sentiment_filter = st.selectbox("Filter by sentiment", ["All", "Positive", "Neutral", "Negative"])
+# Sidebar inputs
+st.sidebar.header("🔎 Search")
+ticker = st.sidebar.text_input("Enter a stock ticker (e.g. TSLA, AAPL):", "TSLA")
+sentiment_filter = st.sidebar.selectbox("🧠 Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
 
-# Get API token from secrets
+# API token from secrets
 API_TOKEN = st.secrets["API_TOKEN"]
 BASE_URL = st.secrets["BASE_URL"]
 
-# Fetch news
+# Function to fetch news from API
 def get_news(ticker):
     url = BASE_URL
     params = {
@@ -24,35 +25,37 @@ def get_news(ticker):
     response = requests.get(url, params=params)
     return response.json().get("data", [])
 
-# Convert score to sentiment
+# Function to interpret sentiment
 def interpret_sentiment(score):
     if score > 0.15:
-        return "🟢 Positive"
+        return "😊 Positive", "🟢"
     elif score < -0.15:
-        return "🔴 Negative"
-    return "🟡 Neutral"
+        return "😟 Negative", "🔴"
+    else:
+        return "😐 Neutral", "🟡"
 
-# Load and display news
+# Display News
 if ticker:
-    with st.spinner("Fetching latest news..."):
-        news_data = get_news(ticker)
+    st.markdown(f"### 📡 News for **{ticker.upper()}**")
 
-        if news_data:
-            for article in news_data:
-                for entity in article.get("entities", []):
-                    if entity["symbol"].upper() == ticker.upper():
-                        sentiment_score = entity.get("sentiment_score", 0)
-                        sentiment = interpret_sentiment(sentiment_score)
+    with st.spinner("Fetching news..."):
+        articles = get_news(ticker)
 
-                        # Filter by sentiment
-                        if sentiment_filter != "All" and sentiment_filter not in sentiment:
-                            continue
+        if articles:
+            for article in articles:
+                matched_entity = next((e for e in article.get("entities", []) if e["symbol"].upper() == ticker.upper()), None)
+                if matched_entity:
+                    sentiment_score = matched_entity.get("sentiment_score", 0)
+                    sentiment_label, emoji = interpret_sentiment(sentiment_score)
 
-                        st.markdown("----")
-                        st.markdown(f"### [{article['title']}]({article['url']})")
-                        st.markdown(f"📰 **Source:** {article['source']} &nbsp;&nbsp;&nbsp; 🕒 **Date:** {article['published_at'][:10]}")
-                        st.markdown(f"**Sentiment:** {sentiment} &nbsp;&nbsp;&nbsp; 💬 *Score:* `{sentiment_score:.2f}`")
-                        st.markdown(f"📝 *{article['description']}*")
-            st.markdown("----")
+                    # Apply sentiment filter
+                    if sentiment_filter != "All" and sentiment_label.split()[1] != sentiment_filter:
+                        continue
+
+                    # Display article
+                    st.markdown(f"#### [{article['title']}]({article['url']})")
+                    st.markdown(f"📰 *{article['source']}*  |  🕒 *{article['published_at'][:10]}*")
+                    st.markdown(f"**Sentiment:** {emoji} {sentiment_label} ({sentiment_score:.2f})")
+                    st.markdown("---")
         else:
             st.warning("No news articles found.")
