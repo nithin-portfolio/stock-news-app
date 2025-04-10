@@ -24,17 +24,18 @@ def get_news(ticker):
     response = requests.get(url, params=params)
     return response.json().get("data", [])
 
-# Sentiment helper
+# Convert score to sentiment
 def interpret_sentiment(score):
     if score > 0.15:
-        return "Positive"
+            emoji = "😊 Positive"
     elif score < -0.15:
-        return "Negative"
-    return "Neutral"
+            emoji = "😠 Negative"
+    else:
+            emoji = "😐 Neutral"
 
-# Show results
+# Load and display news
 if ticker:
-    with st.spinner("Fetching news..."):
+    with st.spinner("Fetching latest news..."):
         news_data = get_news(ticker)
 
         if news_data:
@@ -44,13 +45,15 @@ if ticker:
                         sentiment_score = entity.get("sentiment_score", 0)
                         sentiment = interpret_sentiment(sentiment_score)
 
-                        # Apply filter
-                        if sentiment_filter != "All" and sentiment != sentiment_filter:
+                        # Filter by sentiment
+                        if sentiment_filter != "All" and sentiment_filter not in sentiment:
                             continue
 
+                        st.markdown("----")
                         st.markdown(f"### [{article['title']}]({article['url']})")
-                        st.markdown(f"📰 {article['source']} • 🕒 {article['published_at'][:10]}")
-                        st.markdown(f"**Sentiment:** {sentiment} ({sentiment_score:.2f})")
-                        st.markdown("---")
+                        st.markdown(f"📰 **Source:** {article['source']} &nbsp;&nbsp;&nbsp; 🕒 **Date:** {article['published_at'][:10]}")
+                        st.markdown(f"**Sentiment:** {sentiment} &nbsp;&nbsp;&nbsp; 💬 *Score:* `{sentiment_score:.2f}`")
+                        st.markdown(f"📝 *{article['description']}*")
+            st.markdown("----")
         else:
-            st.warning("No news found.")
+            st.warning("No news articles found.")
