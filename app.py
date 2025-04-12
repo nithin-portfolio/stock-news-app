@@ -63,8 +63,8 @@ def preload_cache():
     df.to_csv(CACHE_FILE, index=False)
     return df
 
-# Load or create cache
-if os.path.exists(CACHE_FILE):
+# Load or create cache safely
+if os.path.exists(CACHE_FILE) and os.path.getsize(CACHE_FILE) > 0:
     cached_df = pd.read_csv(CACHE_FILE)
 else:
     cached_df = preload_cache()
