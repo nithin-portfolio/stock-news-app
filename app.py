@@ -19,7 +19,7 @@ BASE_URL = st.secrets["BASE_URL"]
 
 # Constants
 CACHE_FILE = "sentiment_data.csv"
-PRELOAD_TICKERS = ["TSLA", "NVDA", "AAPL"]
+PRELOAD_TICKERS = ["NVDA", "AAPL"]
 
 # Function to fetch paginated news (for preload)
 def fetch_paginated_news(ticker, max_articles=100):
