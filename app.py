@@ -4,118 +4,125 @@ import plotly.express as px
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-import time
 
-# Constants
-STOCKS = ["TSLA", "NVDA", "AAPL"]
-ARTICLES_PER_STOCK = 100
-ARTICLES_PER_REQUEST = 3
-HOURS_LOOKBACK = 12
-FILE_PATH = "sentiment_data.csv"
+# Title
+st.title("📈 Senticker – Curated Stock News with Sentiment")
+
+# Sidebar inputs
+st.sidebar.header("🔎 Search")
+ticker = st.sidebar.text_input("Enter a stock ticker (e.g. TSLA, AAPL):", "TSLA").upper()
+sentiment_filter = st.sidebar.selectbox("🧠 Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
 
 # API token from secrets
 API_TOKEN = st.secrets["API_TOKEN"]
 BASE_URL = st.secrets["BASE_URL"]
 
-# Title
-st.title("\ud83d\udcc8 Senticker – Curated Stock News with Sentiment")
+# Constants
+CACHE_FILE = "sentiment_data.csv"
+PRELOAD_TICKERS = ["TSLA", "NVDA", "AAPL"]
 
-# Sidebar inputs
-st.sidebar.header("\ud83d\udd0e Search")
-ticker = st.sidebar.text_input("Enter a stock ticker (e.g. TSLA, AAPL):", "TSLA")
-sentiment_filter = st.sidebar.selectbox("\ud83e\udde0 Filter by Sentiment", ["All", "Positive", "Neutral", "Negative"])
+# Function to fetch paginated news (for preload)
+def fetch_paginated_news(ticker, max_articles=100):
+    articles = []
+    page = 1
+    while len(articles) < max_articles:
+        params = {
+            "api_token": API_TOKEN,
+            "symbols": ticker,
+            "language": "en",
+            "published_after": (datetime.utcnow() - timedelta(hours=12)).isoformat(),
+            "page": page,
+            "limit": 10
+        }
+        response = requests.get(BASE_URL, params=params)
+        data = response.json().get("data", [])
+        if not data:
+            break
+        articles.extend(data)
+        page += 1
+    return articles[:max_articles]
 
-# Function to fetch news from API
-def get_news(ticker, page=1, limit=10, hours=12):
-    url = BASE_URL
-    params = {
-        "api_token": API_TOKEN,
-        "symbols": ticker,
-        "language": "en",
-        "limit": limit,
-        "page": page,
-        "published_after": (datetime.utcnow() - timedelta(hours=hours)).isoformat()
-    }
-    response = requests.get(url, params=params)
-    return response.json().get("data", [])
+# Cache data on app load
+@st.cache_data(show_spinner="Preloading news cache...")
+def preload_cache():
+    all_data = []
+    for t in PRELOAD_TICKERS:
+        news = fetch_paginated_news(t)
+        for article in news:
+            matched_entity = next((e for e in article.get("entities", []) if e["symbol"].upper() == t), None)
+            if matched_entity:
+                all_data.append({
+                    "symbol": t,
+                    "title": article["title"],
+                    "url": article["url"],
+                    "source": article["source"],
+                    "published_at": article["published_at"],
+                    "sentiment_score": matched_entity.get("sentiment_score", 0)
+                })
+    df = pd.DataFrame(all_data)
+    df.to_csv(CACHE_FILE, index=False)
+    return df
+
+# Load or create cache
+if os.path.exists(CACHE_FILE):
+    cached_df = pd.read_csv(CACHE_FILE)
+else:
+    cached_df = preload_cache()
 
 # Function to interpret sentiment
 def interpret_sentiment(score):
     if score > 0.15:
-        return "\ud83d\ude0a Positive", "\ud83d\udfe2"
+        return "😊 Positive", "🟢"
     elif score < -0.15:
-        return "\ud83d\ude1f Negative", "\ud83d\udd34"
+        return "😟 Negative", "🔴"
     else:
-        return "\ud83d\ude10 Neutral", "\ud83d\udfe1"
-
-# Cache the default news on app load
-@st.cache_data
-def load_sentiment_data():
-    return pd.read_csv(FILE_PATH) if os.path.exists(FILE_PATH) else pd.DataFrame()
-
-def store_articles(articles, symbol):
-    records = []
-    for article in articles:
-        sentiment = None
-        if article.get("entities"):
-            sentiment = article["entities"][0].get("sentiment_score", None)
-        records.append({
-            "date": article.get("published_at", ""),
-            "symbol": symbol,
-            "title": article.get("title", ""),
-            "url": article.get("url", ""),
-            "sentiment_score": sentiment
-        })
-    df = pd.DataFrame(records)
-    if os.path.exists(FILE_PATH):
-        existing = pd.read_csv(FILE_PATH)
-        combined = pd.concat([existing, df], ignore_index=True)
-        combined.drop_duplicates(subset=["title", "date"], inplace=True)
-        combined.to_csv(FILE_PATH, index=False)
-    else:
-        df.to_csv(FILE_PATH, index=False)
-
-def fetch_and_store_default_stocks():
-    for stock in STOCKS:
-        articles_collected = 0
-        page = 1
-        while articles_collected < ARTICLES_PER_STOCK:
-            articles = get_news(stock, page=page, limit=ARTICLES_PER_REQUEST)
-            if not articles:
-                break
-            store_articles(articles, stock)
-            articles_collected += len(articles)
-            page += 1
-            time.sleep(0.3)
-
-# On first load, cache articles for TSLA, NVDA, AAPL
-if not os.path.exists(FILE_PATH):
-    with st.spinner("Fetching and caching TSLA, NVDA, AAPL news..."):
-        fetch_and_store_default_stocks()
+        return "😐 Neutral", "🟡"
 
 # Display News
 if ticker:
-    st.markdown(f"### \ud83d\udcf0 News for **{ticker.upper()}**")
-    if ticker.upper() in STOCKS:
-        df = load_sentiment_data()
-        articles = df[df["symbol"] == ticker.upper()].to_dict("records")
+    st.markdown(f"### 📡 News for **{ticker}**")
+
+    if ticker in PRELOAD_TICKERS:
+        articles_df = cached_df[cached_df["symbol"] == ticker]
     else:
-        articles = get_news(ticker.upper(), limit=10)
+        # Real-time fallback
+        with st.spinner("Fetching real-time news..."):
+            params = {
+                "api_token": API_TOKEN,
+                "symbols": ticker,
+                "language": "en",
+                "limit": 3
+            }
+            response = requests.get(BASE_URL, params=params)
+            articles = response.json().get("data", [])
+            articles_df = []
+            for article in articles:
+                matched_entity = next((e for e in article.get("entities", []) if e["symbol"].upper() == ticker), None)
+                if matched_entity:
+                    articles_df.append({
+                        "symbol": ticker,
+                        "title": article["title"],
+                        "url": article["url"],
+                        "source": article["source"],
+                        "published_at": article["published_at"],
+                        "sentiment_score": matched_entity.get("sentiment_score", 0)
+                    })
+            articles_df = pd.DataFrame(articles_df)
 
-    if articles:
+    if articles_df.empty:
+        st.warning("No news articles found.")
+    else:
         sentiment_counts = {"Positive": 0, "Neutral": 0, "Negative": 0}
+        for _, row in articles_df.iterrows():
+            score = row["sentiment_score"]
+            if score > 0.15:
+                sentiment_counts["Positive"] += 1
+            elif score < -0.15:
+                sentiment_counts["Negative"] += 1
+            else:
+                sentiment_counts["Neutral"] += 1
 
-        for article in articles:
-            matched_entity = next((e for e in article.get("entities", []) if e["symbol"].upper() == ticker.upper()), None)
-            if matched_entity:
-                score = matched_entity.get("sentiment_score", 0)
-                if score > 0.15:
-                    sentiment_counts["Positive"] += 1
-                elif score < -0.15:
-                    sentiment_counts["Negative"] += 1
-                else:
-                    sentiment_counts["Neutral"] += 1
-
+        # Pie chart
         if sum(sentiment_counts.values()) > 0:
             fig = px.pie(
                 names=list(sentiment_counts.keys()),
@@ -126,21 +133,16 @@ if ticker:
                     "Neutral": "gold",
                     "Negative": "red"
                 },
-                title="\ud83d\udcca Sentiment Distribution"
+                title="📊 Sentiment Distribution"
             )
             st.plotly_chart(fig)
 
-        for article in articles:
-            matched_entity = next((e for e in article.get("entities", []) if e["symbol"].upper() == ticker.upper()), None)
-            if matched_entity:
-                sentiment_score = matched_entity.get("sentiment_score", 0)
-                sentiment_label, emoji = interpret_sentiment(sentiment_score)
-                if sentiment_filter != "All" and sentiment_label.split()[1] != sentiment_filter:
-                    continue
-
-                st.markdown(f"#### [{article['title']}]({article['url']})")
-                st.markdown(f"\ud83d\udcf0 *{article['source']}*  |  \ud83d\udd52 *{article['published_at'][:10]}*")
-                st.markdown(f"**Sentiment:** {emoji} {sentiment_label} ({sentiment_score:.2f})")
-                st.markdown("---")
-    else:
-        st.warning("No news articles found.")
+        # Show articles
+        for _, row in articles_df.iterrows():
+            sentiment_label, emoji = interpret_sentiment(row["sentiment_score"])
+            if sentiment_filter != "All" and sentiment_label.split()[1] != sentiment_filter:
+                continue
+            st.markdown(f"#### [{row['title']}]({row['url']})")
+            st.markdown(f"📰 *{row['source']}*  |  🕒 *{row['published_at'][:10]}*")
+            st.markdown(f"**Sentiment:** {emoji} {sentiment_label} ({row['sentiment_score']:.2f})")
+            st.markdown("---")
